@@ -1,0 +1,82 @@
+namespace: <primary namespace>
+
+logstash:
+  image:
+    repository: docker.elastic.co/logstash/logstash
+    tag: 7.12.0
+  host: <logstash Host if required>
+  port: <logstash port if required>
+
+deployToNamespaces:
+  - namespace1
+  - namespace2
+
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "500m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+nodeSelector: {}
+
+tolerations: []
+
+config:
+  logstashConfig: |
+    input {
+      file {
+        path => "/var/log/containers/*.log"
+        start_position => "beginning"
+        sincedb_path => "/dev/null"
+        codec => "plain"
+      }
+    }
+
+    filter {
+      if [message] =~ /^\s*\{/ {
+        json {
+          source => "message"
+          target => "parsed_json"
+          add_tag => ["json_parsed"]
+        }
+      } else {
+        grok {
+          match => { "message" => "%{TIMESTAMP_ISO8601:log_timestamp}Z %{WORD:log_level} %{WORD:log_source} %{GREEDYDATA:log_message}" }
+          overwrite => [ "message" ]
+        }
+        date {
+          match => [ "log_timestamp", "ISO8601" ]
+          target => "@timestamp"
+        }
+      }
+
+      mutate {
+        add_field => { "host" => "%{[path]}" }
+        gsub => [
+          "host", "/var/log/containers/(.*)-([a-zA-Z0-9]+)_(.*)", "\1"
+        ]
+      }
+
+      if "json_parsed" in [tags] {
+        mutate {
+          rename => { "[parsed_json][time]" => "time" }
+          remove_field => [ "parsed_json" ]
+        }
+      }
+    }
+
+    output {
+      elasticsearch {
+        hosts => ["http://elastic:9200"]
+        user => "elastic"
+        password => "password"
+        index => "test-logs-%{+YYYY.MM.dd}"
+      }
+      if "_jsonparsefailure" in [tags] {
+        file {
+          path => "/var/log/logstash/json_parse_failures.log"
+        }
+      }
+    }

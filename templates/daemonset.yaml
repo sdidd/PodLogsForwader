@@ -1,0 +1,55 @@
+# templates/daemonset.yaml
+{{- if has .Release.Namespace .Values.deployToNamespaces }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: logstash
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    matchLabels:
+      name: logstash
+  template:
+    metadata:
+      labels:
+        name: logstash
+    spec:
+      securityContext:
+        runAsUser: 0   # Set the user ID to 0 (root) or a suitable user with enough permissions
+        fsGroup: 0 
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      containers:
+      - name: logstash
+        image: "{{ .Values.logstash.image.repository }}:{{ .Values.logstash.image.tag }}"
+        ports:
+        - containerPort: 5044
+        volumeMounts:
+        - name: config-volume
+          mountPath: /usr/share/logstash/pipeline/logstash.conf
+          subPath: logstash.conf
+        - name: varlog
+          mountPath: /var/log
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+        resources:
+          requests:
+            memory: "{{ .Values.resources.requests.memory }}"
+            cpu: "{{ .Values.resources.requests.cpu }}"
+          limits:
+            memory: "{{ .Values.resources.limits.memory }}"
+            cpu: "{{ .Values.resources.limits.cpu }}"
+      volumes:
+      - name: config-volume
+        configMap:
+          name: logstash-config
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+{{- end }}
