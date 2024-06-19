@@ -23,6 +23,7 @@ nodeSelector: {}
 
 tolerations: []
 
+#If you want to extract hostname from /var/www/containers/hostname_something_something.log
 config:
   logstashConfig: |
     input {
@@ -50,13 +51,14 @@ config:
           match => [ "log_timestamp", "ISO8601" ]
           target => "@timestamp"
         }
-      }
 
-      mutate {
-        add_field => { "host" => "%{[path]}" }
-        gsub => [
-          "host", "/var/log/containers/(.*)-([a-zA-Z0-9]+)_(.*)", "\1"
-        ]
+        # Extract host name from path
+        mutate {
+          add_field => { "host" => "%{[path]}" }
+          gsub => [
+            "host", "/var/log/containers/(.*?)-([a-zA-Z0-9]+)_(.*?)(_.*)?\.log", "\1"
+          ]
+        }
       }
 
       if "json_parsed" in [tags] {
